@@ -25,9 +25,7 @@ jobs:
 
       - name: Set lowercase image name
         id: prep
-        run: |
-          IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}:latest
-          echo "image=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+        run: echo "::set-output name=image::ghcr.io/${GITHUB_REPOSITORY,,}:latest"
 
       - name: Build Docker image
         run: docker build -t ${{ steps.prep.outputs.image }} .
