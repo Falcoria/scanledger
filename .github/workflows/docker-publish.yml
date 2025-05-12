@@ -2,7 +2,7 @@ name: Build and Push Docker image
 
 on:
   push:
-    branches: [ main ]  # or your default branch
+    branches: [ main ]
 
 jobs:
   build-and-push:
@@ -10,7 +10,7 @@ jobs:
 
     permissions:
       contents: read
-      packages: write  # required to push to GHCR
+      packages: write
 
     steps:
       - name: Checkout code
@@ -23,8 +23,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set lowercase image name
+        id: prep
+        run: |
+          IMAGE_NAME=ghcr.io/${GITHUB_REPOSITORY,,}:latest
+          echo "image=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Build Docker image
-        run: docker build -t ghcr.io/${{ github.repository }}:latest .
+        run: docker build -t ${{ steps.prep.outputs.image }} .
 
       - name: Push Docker image
-        run: docker push ghcr.io/${{ github.repository }}:latest
+        run: docker push ${{ steps.prep.outputs.image }}
