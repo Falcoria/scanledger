@@ -1,0 +1,11 @@
+uvicorn[standard]
+pydantic-settings==2.6.0
+sqlmodel==0.0.24
+asyncpg==0.30.0
+fastapi==0.115.12
+aiofiles==24.1.0
+python-multipart==0.0.20
+zipstream-ng==1.8.0
+alembic==1.15.2
+dict2xml==1.7.6
+python-libnmap==0.7.3
