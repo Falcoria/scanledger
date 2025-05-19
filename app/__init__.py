@@ -1,15 +1,15 @@
-import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends
 
 from app.config import config, Environment
 from app.logger import logger
 from app.database import init_db
 from app.admin.router import admin_router
 from app.initializers import init_admin_user
-from app.admin.dependencies import validate_admin_access, validate_project_access
+from app.admin.dependencies import validate_admin_access
 from app.projects.router import projects_router
+from app.error_handlers import register_error_handlers
 
 
 @asynccontextmanager
@@ -30,6 +30,8 @@ def create_app():
         redoc_url=config.redoc_url,
         lifespan=lifespan
     )
+
+    register_error_handlers(app)
 
     app.include_router(
         admin_router, 
