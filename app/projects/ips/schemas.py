@@ -67,6 +67,12 @@ class IPOut(BaseIPIn, IPAddress):
             return [host.hostname for host in v]
         return []
 
+    @model_validator(mode="after")
+    def sort_ports(cls, values):
+        if values.ports:
+            values.ports.sort(key=lambda p: p.number)
+        return values
+
 
 class IPOutNmap(BaseIPIn, IPAddress):
     class Config:
