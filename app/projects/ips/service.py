@@ -288,8 +288,9 @@ def update_ipdb_ports(
         existing_port = existing_ports.get(key)
 
         if existing_port:
-            for field, value in port_data.model_dump(exclude_unset=True).items():
-                setattr(existing_port, field, value)
+            for field, value in port_data.model_dump(exclude_unset=True, exclude_none=True).items():
+                if value not in [None, ""]:
+                    setattr(existing_port, field, value)
         else:
             ipdb.ports.append(port_scheme2model(port_data))
 
