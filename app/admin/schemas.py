@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import UUID
 from uuid import uuid4
@@ -20,7 +20,7 @@ class UserOut(UserBase):
 
 
 class UserPrivate(UserBase):
-    id: UUID = uuid4()
+    id: UUID = Field(default_factory=uuid4)
     username: str = None
     hashed_token: Optional[str] = None
 
