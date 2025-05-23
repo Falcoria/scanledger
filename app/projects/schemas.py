@@ -20,7 +20,7 @@ class ProjectName(BaseModel):
 
 
 class ProjectIn(ProjectBase):
-    project_name: str = Field(max_length=30, pattern='^[0-9a-z_A-Z]+$')
+    project_name: str = Field(max_length=30, pattern='^[0-9a-z_A-Z-]+$')
 
 
 class ProjectOut(ProjectBase, ProjectName):
