@@ -36,7 +36,7 @@ projects_router = APIRouter()
 projects_router.include_router(
     ips_router, 
     prefix="/{project_id}/ips", 
-    tags=["ips"], 
+    tags=["projects:ips"], 
     dependencies=[Depends(validate_project_access)]
 )
 projects_router.include_router(
@@ -50,6 +50,7 @@ projects_router.include_router(
 @projects_router.get(
     "", 
     summary="Get all projects", 
+    tags=["projects"],
     response_model=List[ProjectOut]
 )
 async def get_projects(
@@ -66,6 +67,7 @@ async def get_projects(
     "",
     status_code=status.HTTP_201_CREATED,
     summary="Create project",
+    tags=["projects"],
     response_model=ProjectOut,
 )
 async def create_project(
@@ -84,6 +86,7 @@ async def create_project(
     "/{project_id}",
     summary="Get project by ID",
     response_model=ProjectOut,
+    tags=["projects"],
     dependencies=[Depends(validate_project_access)],
 )
 async def get_project(
@@ -98,6 +101,7 @@ async def get_project(
     "/{project_id}",
     summary="Update project",
     # response_model=Project,
+    tags=["projects"],
     response_model=ProjectOut,
     dependencies=[Depends(validate_project_access)],
 )

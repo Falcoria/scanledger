@@ -28,7 +28,14 @@ def create_app():
     app = FastAPI(
         docs_url=config.docs_url, 
         redoc_url=config.redoc_url,
-        lifespan=lifespan
+        lifespan=lifespan,
+        openapi_tags=[
+            {"name": "admin", "description": "Admin operations"},
+            {"name": "projects", "description": "Project CRUD"},
+            {"name": "projects:ips", "description": "Manage IPs within a project"},
+            {"name": "projects:users", "description": "Manage project-user relationships"},
+        ],
+        swagger_ui_parameters={"defaultModelsExpandDepth": -1}
     )
 
     register_error_handlers(app)
@@ -43,8 +50,7 @@ def create_app():
 
     app.include_router(
         projects_router, 
-        prefix="/projects",
-        tags=["projects"],
+        prefix="/projects"
     )
 
     return app
