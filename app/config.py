@@ -21,6 +21,7 @@ class Config(BaseSettings):
 
     # Default admin token
     admin_token: str
+    tasker_token: str
 
     environment: str = Environment.development
 

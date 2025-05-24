@@ -31,6 +31,15 @@ async def init_admin_user():
     return await check_and_create_user("admin", config.admin_token, isadmin=True)
 
 
+async def init_tasker_user():
+    return await check_and_create_user("tasker", config.tasker_token, isadmin=True)
+
+
+async def init_primary_users():
+    admin_result = await init_admin_user()
+    tasker_result = await init_tasker_user()
+
+
 #async def create_directories():
 #    await create_directory(config.projects_dir)
 #    await create_directory(config.attachment_dir)

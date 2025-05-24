@@ -6,7 +6,7 @@ from app.config import config, Environment
 from app.logger import logger
 from app.database import init_db
 from app.admin.router import admin_router
-from app.initializers import init_admin_user
+from app.initializers import init_primary_users
 from app.admin.dependencies import validate_admin_access
 from app.projects.router import projects_router
 from app.error_handlers import register_error_handlers
@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
     try:
         #await delete_all_tables()
         await init_db()
-        await init_admin_user()
+        await init_primary_users()
         #await create_directories()
         yield
     finally:
