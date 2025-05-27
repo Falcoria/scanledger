@@ -1,6 +1,6 @@
 # ScanLedger
 
-ScanLedger is the backend database and API layer of the Falcoria system. It manages scanned IPs, ports, hostnames, and service checks, storing only actionable results (e.g., open ports).
+ScanLedger is a structured scan result database used as part of the Falcoria distributed scanning system. It stores information about discovered IPs, ports, services, and banners from Nmap and other tools. The database supports controlled import and merging of scan data using flexible import modes.
 
 ## Features
 
@@ -8,11 +8,18 @@ ScanLedger is the backend database and API layer of the Falcoria system. It mana
 - API and CLI integration
 - Export support: XML, JSON, CSV (planned)
 - Modular structure for projects, IPs, ports, and hostnames
-- Designed for distributed scanning
+- Designed for distributed scanning and chaining phases
+
+The power of ScanLedger comes from its flexible import modes, which allow you to control how scan data is merged, updated, or replaced.
+
+You can explore real-world examples here:
+
+- [Import Modes](https://falcoria.github.io/falcoria-docs/import-modes/)
+- [Use Cases](https://falcoria.github.io/falcoria-docs/use-cases/)
 
 ## Usage
 
-ScanLedger is intended to be used together with the `falcli.py` CLI tool to initiate scans, import results, and manage scan data efficiently.
+ScanLedger is intended to be used together with the `falc.py` CLI tool to initiate scans, import results, and manage scan data efficiently.
 
 ## Installation
 
@@ -152,6 +159,35 @@ https://localhost:443
 ```
 
 Make sure you have valid certificates in place (such as `bundle.pem`) as configured in your Compose setup.
+
+---
+
+## Example API Request
+
+Once ScanLedger is running, you can use a tool like `curl` to interact with the API. For example, to import a scan file:
+
+```bash
+curl -X POST https://localhost:443/projects \
+  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"project_name": "example-project", "comment": "Initial test project"}' \
+  --insecure
+```
+
+Alternatively, you can use the falcli command-line tool for more convenient access:
+[falcli command-line tool](https://github.com/Falcoria/falcli)
+
+```bash
+python3 falcli.py project create example-project
+```
+
+You can browse available endpoints and parameters at:
+
+```
+https://localhost:443/docs
+```
+
+---
 
 ## License
 
