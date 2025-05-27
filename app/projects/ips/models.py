@@ -1,8 +1,6 @@
-import uuid
-from datetime import date
 from typing import Optional, List, TYPE_CHECKING
 
-from sqlmodel import SQLModel, Relationship, Field, Column, ForeignKey, Text, UniqueConstraint, UUID
+from sqlmodel import SQLModel, Relationship, Field, Column, ForeignKey, UniqueConstraint, UUID
 
 from app.projects.ports.models import PortDB
 from app.projects.hosts.models import HostIPLink, HostDB

@@ -23,7 +23,6 @@ class DownloadReportFormat(str, Enum):
 class BaseIPIn(BaseModel):
     asnName: Optional[str] = ""
     orgName: Optional[str] = ""
-    # New fields from xml2json:
     status: Optional[str] = ""
     os: Optional[str] = ""
     endtime: Optional[int] = 0

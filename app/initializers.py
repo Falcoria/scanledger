@@ -1,11 +1,10 @@
-from sqlmodel import select, insert
+from sqlmodel import select
 
 from app.config import config
 from app.admin.models import UserDB
 from app.database import select_one, insert_one
 from app.admin.utils import hash_password_without_salt
 from app.logger import logger
-#from app.projects.utils import create_directory
 
 
 async def check_and_create_user(username: str, password: str, isadmin=False):
@@ -38,8 +37,3 @@ async def init_tasker_user():
 async def init_primary_users():
     admin_result = await init_admin_user()
     tasker_result = await init_tasker_user()
-
-
-#async def create_directories():
-#    await create_directory(config.projects_dir)
-#    await create_directory(config.attachment_dir)
