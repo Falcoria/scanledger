@@ -38,7 +38,7 @@ class Config(BaseSettings):
     max_file_upload_size: int = 500_000_000
     default_chunk_size: int = 1024
 
-    model_config = SettingsConfigDict(env_file="../.env")
+    model_config = SettingsConfigDict(env_file=str(base_dir.parent / ".env"))
 
     def configure(self):
         if self.environment == Environment.development:
