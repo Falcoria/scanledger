@@ -16,10 +16,6 @@ __pycache__/
 # Ignore VSCode settings and editor files
 .vscode/
 
-# Ignore Alembic generated migration files
-migrations/versions/
-deprecated/
-
 # Ignore app data except tracked placeholders
 app/data/*
 !app/data/.gitkeep
