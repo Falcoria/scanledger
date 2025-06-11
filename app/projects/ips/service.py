@@ -295,18 +295,21 @@ def update_ipdb_ports(
             ipdb.ports.append(port_scheme2model(port_data))
 
 
-def update_ipdb_hostnames(existing_ipdb: IPDB, new_hostdbs: List[HostDB]) -> None:
+def update_ipdb_hostnames(existing_ipdb: IPDB, new_hostdbs: List[HostDB]) -> bool:
     """
     Merges new HostDB objects into the IPDB hostnames list without duplicates.
-    Uses hostname string comparison to avoid adding duplicates even if HostDB
-    instances differ in memory or are not yet flushed to the database.
+    Returns True if any new hostnames were added, False otherwise.
     """
     existing_hostnames = {host.hostname for host in existing_ipdb.hostnames or []}
+    updated = False
+
     for host in new_hostdbs:
         if host.hostname not in existing_hostnames:
             existing_ipdb.hostnames.append(host)
-            existing_hostnames.add(host.hostname)  # update the set immediately
+            existing_hostnames.add(host.hostname)
+            updated = True
 
+    return updated
 
 
 # ================================
@@ -322,22 +325,31 @@ async def create_ipsdb_insert(
     """
     INSERT mode:
     - Creates new IPs only
-    - Skips existing IPs
-    - Uses hostnames and ports as provided for new IPs
+    - Merges hostnames for existing IPs
+    - Skips modifying ports or other metadata for existing IPs
     """
     ipsdbs = []
+    updated_ips = []
+
     for ip in new_ips:
-        if ip.ip not in map_existing_ipdbs:
-            # hostnames should be already bound to hostdbs and to ipdb
+        existing_ipdb = map_existing_ipdbs.get(ip.ip)
+
+        if not existing_ipdb:
+            # Insert new IP
             ipdb = ip_scheme2model(ip, project_id)
             ipsdbs.append(ipdb)
+        else:
+            if update_ipdb_hostnames(existing_ipdb, ip.hostnames or []):
+                session.add(existing_ipdb)
+                updated_ips.append(existing_ipdb.ip)
 
-    if ipsdbs:
-        session.add_all(ipsdbs)
+    if ipsdbs or updated_ips:
+        if ipsdbs:
+            session.add_all(ipsdbs)
         await session.commit()
-        return [ip.ip for ip in ipsdbs]
 
-    return []
+    # Return all IPs that were created or had hostnames merged
+    return [ip.ip for ip in ipsdbs] + updated_ips
 
 
 async def create_ipsdb_replace(
