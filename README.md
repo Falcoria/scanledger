@@ -19,7 +19,7 @@ You can explore real-world examples here:
 
 ## Usage
 
-ScanLedger is intended to be used together with the `falc.py` CLI tool to initiate scans, import results, and manage scan data efficiently.
+ScanLedger is intended to be used together with the `falcli.py` CLI tool to initiate scans, import results, and manage scan data efficiently.
 
 ## Installation
 
