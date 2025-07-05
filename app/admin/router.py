@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Body
 
 from app.constants.messages import Message
 
@@ -8,15 +8,17 @@ from .schemas import (
     UserIn, 
     UserBase, 
     UserPrivate, 
-    Token, 
-    UserOut
+    TokenIn,
+    Token,
+    UserAdminOut
 )
 from .service import (
     get_usersdb, 
     create_userdb, 
     update_userdb,
     delete_userdb,
-    update_usertoken
+    update_token_expiration_time,
+    create_user_tokendb
 )
 
 
@@ -26,7 +28,7 @@ admin_router = APIRouter()
 @admin_router.get(
     "/users", 
     summary="Get users", 
-    response_model=List[UserOut]
+    response_model=List[UserAdminOut]
 )
 async def index():
     """
@@ -51,8 +53,8 @@ async def create_user(
     """
     Create a new user and retreive token for it
     """
-    new_user = UserPrivate(**user_data.model_dump(exclude_unset=True))
-    token = await create_userdb(new_user)
+    #new_user = UserPrivate(**user_data.model_dump(exclude_unset=True))
+    token = await create_userdb(user_data)
     if token is None:
         raise HTTPException(status_code=400, detail=Message.USER_ALREADY_EXISTS)
 
@@ -62,7 +64,7 @@ async def create_user(
 @admin_router.put(
     "/users/{user_id}",
     summary="Update user",
-    response_model=UserOut
+    response_model=UserAdminOut
 )
 async def update_user(
     user_id: str, 
@@ -88,16 +90,36 @@ async def delete_user(user_id: str):
         raise HTTPException(status_code=404, detail=Message.USER_NOT_FOUND)
 
 
-@admin_router.get(
-    "/users/{user_id}/change_token",
+@admin_router.post(
+    "/users/{user_id}/token",
     summary="Change user's token",
     description="Deletes old token and creates a new one",
     response_model=Token
 )
-async def change_user_token(user_id: str):
+async def change_user_token(
+    user_id: str,
+    token_data: TokenIn = Body(..., description="Token data with new expiration time")
+):
     """ Replace the token for a given user by its name """
-    new_token = await update_usertoken(user_id)
+    new_token = await create_user_tokendb(user_id, token_data.token_livetime)
     if new_token is None:
         raise HTTPException(status_code=404, detail=Message.USER_NOT_FOUND)
     
     return {"token": new_token}
+
+
+@admin_router.put(
+    "/users/{user_id}/token",
+    summary="Update user's token expiration time",
+    description="Updates the expiration time of the user's token",
+)
+async def update_user_token(
+    user_id: str,
+    token_data: TokenIn = Body(..., description="Token data with new expiration time")
+):
+    """ Update the token for a given user by its name """
+    new_expires_at = await update_token_expiration_time(user_id, token_data.token_livetime)
+    if new_expires_at is None:
+        raise HTTPException(status_code=404, detail=Message.USER_NOT_FOUND)
+    
+    return {"new_expires_at": new_expires_at}

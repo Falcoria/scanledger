@@ -14,6 +14,7 @@ class UserDB(SQLModel, table=True):
     hashed_token: Optional[str]
     email: Optional[str]
     isadmin: bool = False
+    token_expires_at: Optional[int] | None = None
     #ip_counter: int = 0
     # disabled: bool = False
 

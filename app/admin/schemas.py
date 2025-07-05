@@ -10,8 +10,21 @@ class UserBase(BaseModel):
     ip_counter: int = 0
 
 
-class UserIn(UserBase):
-    username: str
+class TokenBase(BaseModel):
+    pass
+
+
+class TokenIn(TokenBase):
+    token_livetime: Optional[int] = None
+
+
+class TokenOut(TokenBase):
+    hashed_token: Optional[str] = None
+    token_expires_at: Optional[int] = None
+
+
+class UserIn(UserBase, TokenIn):
+    username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_-]+$")
 
 
 class UserOut(UserBase):
@@ -19,10 +32,15 @@ class UserOut(UserBase):
     username: str
 
 
-class UserPrivate(UserBase):
+class UserAdminOut(UserOut):
+    token_expires_at: Optional[int] = None
+
+
+class UserPrivate(UserBase, TokenOut):
     id: UUID = Field(default_factory=uuid4)
     username: str = None
-    hashed_token: Optional[str] = None
+    #hashed_token: Optional[str] = None
+    #token_expires_at: Optional[int] = None
 
 
 class Token(BaseModel):
