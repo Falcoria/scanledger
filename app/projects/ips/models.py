@@ -15,11 +15,10 @@ class IPDB(SQLModel, table=True):
 
     id: int = Field(default=None, primary_key=True)
     ip: Optional[str] = Field(index=True)
-    asnName: Optional[str] = None
-    orgName: Optional[str] = None
     status: Optional[str] = None
     os: Optional[str] = None
-    endtime: Optional[int] = None
+    starttime: Optional[int] = Field(default=None)
+    endtime: Optional[int] = Field(default=None)
 
     project_id: str | None = Field(
         sa_column=Column(

@@ -26,6 +26,16 @@ class NmapDataFormatter:
 
     @staticmethod
     def xml2json(formatted_report):
+        def _expand_port_ranges(portlist: str):
+            ports = []
+            for part in portlist.split(","):
+                if "-" in part:
+                    lo, hi = map(int, part.split("-"))
+                    ports.extend(range(lo, hi + 1))
+                else:
+                    ports.append(int(part))
+            return ports
+
         results = []
         for host in formatted_report.hosts:
             result = dict()
@@ -37,6 +47,7 @@ class NmapDataFormatter:
             result["endtime"] = host.endtime
             osmatch = host.os.osmatch()
             result["os"] = osmatch[0] if osmatch else ""
+
             for service in host.services:
                 port_dict = dict()
                 port_dict["number"] = service.port
@@ -48,15 +59,42 @@ class NmapDataFormatter:
                 j = [json.dumps(sr) for sr in service.scripts_results]
                 port_dict["scripts"] = " ".join(j)
 
-                # Suggested extra fields (optional for now):
                 if service.reason:
                     port_dict["reason"] = service.reason
-                # if service.tunnel:
-                #     port_dict["tunnel"] = service.tunnel
-                # if service.cpelist:
-                #     port_dict["cpelist"] = service.cpelist
 
                 result["ports"].append(port_dict)
+
+            # Add extraports not listed in host.services
+            extras = host._extras.get("ports", {})
+            extraports = extras.get("extraports", [])
+            if not isinstance(extraports, list):
+                extraports = [extraports]
+
+            existing_ports = {s.port for s in host.services}
+
+            for ep in extraports:
+                ep_state = ep.get("@state")
+                ep_reason = ep.get("extrareasons", {}).get("@reason")
+                ports_str = ep.get("extrareasons", {}).get("@ports", "")
+                if not ports_str:
+                    continue
+
+                expanded = _expand_port_ranges(ports_str)
+
+                for port in expanded:
+                    if port in existing_ports:
+                        continue
+                    port_dict = {
+                        "number": port,
+                        "protocol": "tcp",
+                        "state": ep_state,
+                        "reason": ep_reason,
+                        "banner": "",
+                        "service": "",
+                        "servicefp": "",
+                        "scripts": ""
+                    }
+                    result["ports"].append(port_dict)
 
             results.append(result)
         return results
@@ -67,6 +105,7 @@ class NmapDataFormatter:
         if not formatted_report:
             return None
         return NmapDataFormatter.xml2json(formatted_report)
+
 
     @staticmethod
     def xmlstring2json(xml_report):

@@ -1,32 +1,21 @@
-from datetime import datetime, timezone
 from typing import Optional, List
 from enum import Enum
 from ipaddress import ip_address
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.projects.ports.schemas import PortIn, PortState, PortOut
+from app.projects.ports.schemas import PortIn, PortOut
 
-
-class ImportMode(str, Enum):
-    INSERT = "insert"
-    REPLACE = "replace"
-    UPDATE = "update"
-    APPEND = "append"
+from falcoria_common.schemas.enums.port import ProtocolEnum
+from falcoria_common.schemas.ips import BaseIP
 
 
 class DownloadReportFormat(str, Enum):
-    #JSON = "json"
-    #CSV = "csv"
+    JSON = "json"
     XML = "xml"
 
-class BaseIPIn(BaseModel):
-    asnName: Optional[str] = ""
-    orgName: Optional[str] = ""
-    status: Optional[str] = ""
-    os: Optional[str] = ""
-    endtime: Optional[int] = 0
-    hostnames: Optional[List[str]] = []
+
+class BaseIPIn(BaseIP):
     ports: Optional[List[PortIn]] = []
 
 
@@ -35,17 +24,14 @@ class IPAddress(BaseModel):
 
 
 class IPIn(BaseIPIn, IPAddress):
-
-    @model_validator(mode="before")
-    def filter_invalid_ports(cls, values):
-        """
-        Filters out ports with states not listed in the PortState enum.
-        Only keeps ports where state == "open".
-        """
-        ports = values.get('ports', [])
-        if isinstance(ports, list):
-            values['ports'] = [p for p in ports if p.get('state') == PortState.open.value]
-        return values
+    not_shown_ports: Optional[List[int]] = Field(
+        default_factory=list,
+        description="Ports that were scanned and reported as not open (e.g., closed/filtered) but not shown in the Nmap report."
+    )
+    not_shown_ports_protocol: Optional[ProtocolEnum] = Field(
+        default=ProtocolEnum.tcp,
+        description="Protocol of the not shown ports, if applicable."
+    )
 
     @field_validator('ip', mode="before")
     def validate_ip(cls, v):
@@ -57,7 +43,7 @@ class IPIn(BaseIPIn, IPAddress):
             raise ValueError('Invalid IP address')
 
 
-class IPOut(BaseIPIn, IPAddress):
+class IPOut(BaseIP, IPAddress):
     ports: Optional[List[PortOut]]
 
     @field_validator('hostnames', mode="before")
@@ -73,7 +59,11 @@ class IPOut(BaseIPIn, IPAddress):
         return values
 
 
-class IPOutNmap(BaseIPIn, IPAddress):
+class IPOutNmap(BaseIP, IPAddress):
+    def to_nmap_json(self):
+        # Return a dict representation suitable for Nmap JSON
+        return self.model_dump(exclude_none=True)
+
     class Config:
         fields = {
             "asnName": {"exclude": True},

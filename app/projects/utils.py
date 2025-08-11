@@ -1,6 +1,7 @@
 import os
 import uuid
 import shutil
+from time import time
 from datetime import datetime
 
 import aiofiles
@@ -88,3 +89,7 @@ def move_file(filepath: str, destination: str):
     except Exception as e:
         logger.error(f"Exception: move_file {e}")
         return False
+    
+
+def unix_now() -> int:
+    return int(time())

@@ -16,6 +16,7 @@ from app.admin.models import UserDB
 from app.constants.messages import Message
 from app.projects.ips.router import ips_router
 from app.projects.users.router import project_user_router
+from app.projects.history.router import history_router
 
 from .service import (
     get_projectdb,
@@ -33,6 +34,12 @@ from .models import ProjectDB
 
 
 projects_router = APIRouter()
+projects_router.include_router(
+    history_router, 
+    prefix="/{project_id}/history", 
+    tags=["projects:history"], 
+    dependencies=[Depends(validate_project_access)]
+)
 projects_router.include_router(
     ips_router, 
     prefix="/{project_id}/ips", 

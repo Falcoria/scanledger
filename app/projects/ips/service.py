@@ -1,19 +1,47 @@
-from typing import List, Dict, Any
+from app.projects.parsers.internal_to_nmap import InternalToNmapXML
+# ================================
+# DOWNLOAD REPORT (custom XML)
+# ================================
+
+async def download_ipsdb_report_custom_xml(
+    project_id: str,
+    skip: int | None = None,
+    limit: int | None = None,
+    has_ports: bool | None = None
+) -> str | None:
+    """
+    Downloads IPs from the database for the specified project and returns custom Nmap XML report as a file.
+    """
+    ips = await get_ipsdb(project_id, skip, limit, has_ports)
+    if not ips:
+        return None
+    nmap_report = InternalToNmapXML.build_nmap_report(ips)
+    xml_str = InternalToNmapXML.to_xml(nmap_report)
+    return xml_str
+from typing import List, Dict, Any, Optional
 
 from sqlmodel import select, delete
 from sqlalchemy.orm import joinedload
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.database import select_many, delete_and_commit, get_session, select_one, insert_and_refresh
+from app.database import select_many, delete_and_commit, get_session, select_one
 from app.projects.ports.schemas import PortIn
 from app.projects.ports.service import port_scheme2model
-from app.projects.report_processing.nmap_to_ip_converter import nmap_report_to_ipdict
 from app.projects.utils import read_and_decode_file
 from app.projects.parsers import nmap_exporters
+from app.projects.parsers.new_custom_parser import NmapParser
+from app.projects.parsers.nmap_to_internal import NmapToInternal
 from app.projects.hosts.models import HostDB
+from app.projects.history.models import IPPortHistoryDB
+from app.projects.history.service import detect_port_change_entry
+from app.projects.utils import unix_now
+
+from falcoria_common.schemas.enums.history import PortChangeType
+from falcoria_common.schemas.enums.port import ProtocolEnum, PortState
+from falcoria_common.schemas.enums.common import ImportMode
 
 from .models import IPDB
-from .schemas import IPIn, ImportMode, DownloadReportFormat, BaseIPIn
+from .schemas import IPIn, DownloadReportFormat, BaseIPIn
 
 
 # ================================
@@ -224,18 +252,22 @@ def ip_scheme2model(
     project_id: str
 ) -> IPDB:
     """
-    Converts an IPIn schema to an IPDB model instance.
+    Converts an IPIn schema to an IPDB model instance,
+    filtering out ports that are not open.
     """
     ip_data = ip.model_dump(exclude={"ports", "hostnames"})
     ipdb = IPDB(**ip_data, project_id=project_id)
     ipdb.hostnames = ip.hostnames or []
 
+    ipdb.ports = []
     for port in ip.ports or []:
         if isinstance(port, dict):
             port = PortIn(**port)
-        ipdb.ports.append(port_scheme2model(port))
+        if port.state == PortState.open.value:
+            ipdb.ports.append(port_scheme2model(port))
 
     return ipdb
+
 
 
 # ================================
@@ -245,10 +277,12 @@ def ip_scheme2model(
 def update_ipdb_attributes(ipdb: IPDB, update_data: Dict[Any, Any]) -> None:
     """
     Updates metadata fields (excluding ports and hostnames) in an IPDB.
+    Only updates attributes that actually exist on the IPDB model.
     """
     for key, value in update_data.items():
-        if key not in {"ports", "hostnames"}:
+        if key not in {"ports", "hostnames"} and hasattr(ipdb, key):
             setattr(ipdb, key, value)
+
 
 
 def add_port_to_ipdb(ipdb: IPDB, port: PortIn | Dict[Any, Any]):
@@ -271,13 +305,109 @@ def replace_ipdb_ports(ipdb: IPDB, new_ports: List[PortIn | Dict[Any, Any]]):
     process_ports_in_data(ipdb, new_ports)
 
 
+def apply_replace_mode_ports(
+    project_id: str,
+    ip: IPIn,
+    existing_ipdb: IPDB,
+    history_entries: Optional[list[IPPortHistoryDB]] = None
+) -> None:
+    created_at = ip.endtime or unix_now()
+    if history_entries is None:
+        history_entries = []
+
+    incoming_ports = ip.ports or []
+    not_shown_ports = ip.not_shown_ports or []
+    not_shown_protocol = ip.not_shown_ports_protocol or ProtocolEnum.tcp
+
+    incoming_map = {(p.number, p.protocol): p for p in incoming_ports}
+    existing_ports_map = {(p.number, p.protocol): p for p in existing_ipdb.ports}
+    updated_ports = []
+
+    # Handle updates and deletions
+    for key, existing_port in existing_ports_map.items():
+        incoming_port = incoming_map.get(key)
+        if incoming_port:
+            if incoming_port.state.value != PortState.open.value:
+                history_entries.append(IPPortHistoryDB(
+                    project_id=project_id,
+                    ip=existing_ipdb.ip,
+                    port=existing_port.number,
+                    protocol=existing_port.protocol,
+                    change_type=PortChangeType.STATE,
+                    old_value=existing_port.state,
+                    new_value=incoming_port.state,
+                    created_at=created_at
+                ))
+                continue
+
+            history_entry = detect_port_change_entry(
+                project_id=project_id,
+                ip=existing_ipdb.ip,
+                new_port=incoming_port,
+                old_port=existing_port,
+                created_at=created_at
+            )
+            if history_entry and history_entry.change_type != PortChangeType.STATE:
+                history_entries.append(history_entry)
+
+            for field, value in incoming_port.model_dump(exclude_unset=True, exclude_none=True).items():
+                if value not in [None, ""]:
+                    setattr(existing_port, field, value)
+
+            updated_ports.append(existing_port)
+        else:
+            updated_ports.append(existing_port)
+
+    # Handle new open ports
+    for key, port in incoming_map.items():
+        if key not in existing_ports_map and port.state == PortState.open.value:
+            updated_ports.append(port_scheme2model(port))
+            history_entries.append(IPPortHistoryDB(
+                project_id=project_id,
+                ip=existing_ipdb.ip,
+                port=port.number,
+                protocol=port.protocol,
+                change_type=PortChangeType.STATE,
+                old_value=None,
+                new_value=port.state,
+                created_at=created_at
+            ))
+
+    # Handle deleted (not shown) ports
+    for port_num in not_shown_ports:
+        key = (port_num, not_shown_protocol.value)
+        if key in existing_ports_map:
+            existing_port = existing_ports_map[key]
+            history_entries.append(IPPortHistoryDB(
+                project_id=project_id,
+                ip=existing_ipdb.ip,
+                port=port_num,
+                protocol=existing_port.protocol,
+                change_type=PortChangeType.STATE,
+                old_value=existing_port.state,
+                new_value=PortState.closed.value,
+                created_at=created_at
+            ))
+            # Do not append to updated_ports (marked as deleted)
+
+    existing_ipdb.ports = updated_ports
+
+
 def update_ipdb_ports(
     ipdb: IPDB,
-    incoming_ports: List[PortIn | Dict[Any, Any]]
-):
+    incoming_ports: List[PortIn | Dict[Any, Any]],
+    created_at: int | None = None,
+    history_entries: Optional[list[IPPortHistoryDB]] = None
+) -> None:
     """
     Updates existing ports in-place or adds new ports.
+    Appends port change history entries to provided list.
     """
+    if created_at is None:
+        created_at = unix_now()
+    if history_entries is None:
+        history_entries = []
+
     existing_ports = {(p.number, p.protocol): p for p in ipdb.ports}
 
     for port_data in incoming_ports:
@@ -288,11 +418,32 @@ def update_ipdb_ports(
         existing_port = existing_ports.get(key)
 
         if existing_port:
+            history_entry = detect_port_change_entry(
+                project_id=ipdb.project_id,
+                ip=ipdb.ip,
+                new_port=port_data,
+                old_port=existing_port,
+                created_at=created_at
+            )
+            if history_entry:
+                history_entries.append(history_entry)
+
             for field, value in port_data.model_dump(exclude_unset=True, exclude_none=True).items():
                 if value not in [None, ""]:
                     setattr(existing_port, field, value)
+
         else:
             ipdb.ports.append(port_scheme2model(port_data))
+            history_entries.append(IPPortHistoryDB(
+                project_id=ipdb.project_id,
+                ip=ipdb.ip,
+                port=port_data.number,
+                protocol=port_data.protocol,
+                change_type=PortChangeType.STATE,
+                old_value=None,
+                new_value=port_data.state,
+                created_at=created_at
+            ))
 
 
 def update_ipdb_hostnames(existing_ipdb: IPDB, new_hostdbs: List[HostDB]) -> bool:
@@ -311,6 +462,17 @@ def update_ipdb_hostnames(existing_ipdb: IPDB, new_hostdbs: List[HostDB]) -> boo
 
     return updated
 
+
+def filter_only_open_ports(ips: List[IPIn]) -> None:
+    """
+    Modifies IPIn objects in-place to retain only open ports.
+    """
+    for ip in ips:
+        ip.ports = [
+            p for p in ip.ports
+            if isinstance(p, dict) and p.get("state") == PortState.open.value
+            or isinstance(p, PortIn) and p.state == PortState.open.value
+        ]
 
 # ================================
 # MODE IMPLEMENTATIONS
@@ -356,22 +518,23 @@ async def create_ipsdb_replace(
     session: AsyncSession,
     project_id: str,
     new_ips: List[IPIn],
-    map_existing_ipdbs: Dict[str, IPDB]
+    map_existing_ipdbs: Dict[str, IPDB],
+    track_history: bool
 ) -> List[str]:
-    """
-    REPLACE mode:
-    - Overwrites metadata.
-    - Replaces ports.
-    - Reassigns hostnames (old links discarded).
-    """
     newly_added_ips = []
+    history_entries: list[IPPortHistoryDB] = []
 
     for ip in new_ips:
         existing_ipdb = map_existing_ipdbs.get(ip.ip)
 
         if existing_ipdb:
             update_ipdb(existing_ipdb, ip.model_dump(exclude_unset=True))
-            replace_ipdb_ports(existing_ipdb, ip.ports or [])
+            apply_replace_mode_ports(
+                project_id=project_id,
+                ip=ip,
+                existing_ipdb=existing_ipdb,
+                history_entries=history_entries
+            )
             existing_ipdb.hostnames = list(ip.hostnames or [])
             session.add(existing_ipdb)
             newly_added_ips.append(existing_ipdb.ip)
@@ -380,6 +543,9 @@ async def create_ipsdb_replace(
             ipdb.hostnames = list(ip.hostnames or [])
             session.add(ipdb)
             newly_added_ips.append(ipdb.ip)
+
+    if history_entries and track_history:
+        session.add_all(history_entries)
 
     if newly_added_ips:
         await session.commit()
@@ -391,22 +557,32 @@ async def create_ipsdb_update(
     session: AsyncSession,
     project_id: str,
     new_ips: List[IPIn],
-    map_existing_ipdbs: Dict[str, IPDB]
+    map_existing_ipdbs: Dict[str, IPDB],
+    track_history: bool
 ) -> List[str]:
     """
     UPDATE mode:
     - Updates metadata only for fields provided in input
     - Updates existing ports and adds new ports
     - Merges hostnames
+    - Tracks changes in port history
     """
     updated_ips = []
+    all_history_entries: list[IPPortHistoryDB] = []
 
     for ip in new_ips:
         existing_ipdb = map_existing_ipdbs.get(ip.ip)
 
         if existing_ipdb:
             update_ipdb(existing_ipdb, ip.model_dump(exclude_unset=True))
-            update_ipdb_ports(existing_ipdb, ip.ports or [])
+
+            update_ipdb_ports(
+                ipdb=existing_ipdb,
+                incoming_ports=ip.ports or [],
+                created_at=ip.endtime or unix_now(),
+                history_entries=all_history_entries,
+            )
+
             update_ipdb_hostnames(existing_ipdb, ip.hostnames or [])
 
             session.add(existing_ipdb)
@@ -417,16 +593,30 @@ async def create_ipsdb_update(
             session.add(ipdb)
             updated_ips.append(ipdb.ip)
 
+    if all_history_entries and track_history:
+        session.add_all(all_history_entries)
+
     if updated_ips:
         await session.commit()
 
     return updated_ips
 
 
-def append_ipdb_ports(ipdb: IPDB, new_ports: List[PortIn | Dict[Any, Any]]) -> None:
+def append_ipdb_ports(
+    ipdb: IPDB,
+    new_ports: List[PortIn | Dict[Any, Any]],
+    created_at: int | None = None,
+    history_entries: Optional[list[IPPortHistoryDB]] = None
+) -> None:
     """
     Adds only missing ports to the existing IPDB without modifying existing ports.
+    Tracks newly added open ports in history.
     """
+    if created_at is None:
+        created_at = unix_now()
+    if history_entries is None:
+        history_entries = []
+
     existing_ports = {(p.number, p.protocol) for p in ipdb.ports}
 
     for port in new_ports or []:
@@ -437,26 +627,46 @@ def append_ipdb_ports(ipdb: IPDB, new_ports: List[PortIn | Dict[Any, Any]]) -> N
         if key not in existing_ports:
             ipdb.ports.append(port_scheme2model(port))
 
+            if port.state == PortState.open.value:
+                history_entries.append(IPPortHistoryDB(
+                    project_id=ipdb.project_id,
+                    ip=ipdb.ip,
+                    port=port.number,
+                    protocol=port.protocol,
+                    change_type=PortChangeType.STATE,
+                    old_value=None,
+                    new_value=port.state,
+                    created_at=created_at
+                ))
+
 
 async def create_ipsdb_append(
     session: AsyncSession,
     project_id: str,
     new_ips: List[IPIn],
-    map_existing_ipdbs: Dict[str, IPDB]
+    map_existing_ipdbs: Dict[str, IPDB],
+    track_history: bool
 ) -> List[str]:
     """
     APPEND mode:
     - Does not change metadata
     - Merges hostnames
     - Appends new ports (does not change existing ones)
+    - Tracks history for added open ports
     """
     updated_ips = []
+    all_history_entries: list[IPPortHistoryDB] = []
 
     for ip in new_ips:
         existing_ipdb = map_existing_ipdbs.get(ip.ip)
 
         if existing_ipdb:
-            append_ipdb_ports(existing_ipdb, ip.ports or [])
+            append_ipdb_ports(
+                existing_ipdb,
+                ip.ports or [],
+                created_at=ip.endtime or unix_now(),
+                history_entries=all_history_entries
+            )
             update_ipdb_hostnames(existing_ipdb, ip.hostnames or [])
             session.add(existing_ipdb)
             updated_ips.append(existing_ipdb.ip)
@@ -464,6 +674,9 @@ async def create_ipsdb_append(
             ipdb = ip_scheme2model(ip, project_id)
             session.add(ipdb)
             updated_ips.append(ipdb.ip)
+
+    if all_history_entries and track_history:
+        session.add_all(all_history_entries)
 
     if updated_ips:
         await session.commit()
@@ -478,7 +691,8 @@ async def create_ipsdb_append(
 async def create_ipsdb(
     project_id: str,
     new_ips: List[IPIn],
-    mode: ImportMode
+    mode: ImportMode,
+    track_history: bool
 ) -> List[str] | None:
     """
     Creates or updates IPDB entries depending on the specified mode.
@@ -486,6 +700,9 @@ async def create_ipsdb(
     unique_ips = delete_ip_duplicates_merge_hosts(new_ips)
     if not unique_ips:
         return None
+
+    if mode != ImportMode.REPLACE:
+        filter_only_open_ports(unique_ips)
 
     new_ip_addrs = [ip.ip for ip in unique_ips]
 
@@ -514,28 +731,36 @@ async def create_ipsdb(
                 session,
                 project_id,
                 unique_ips,
-                map_existing_ipdbs
+                map_existing_ipdbs,
+                track_history
             )
         elif mode == ImportMode.UPDATE:
             return await create_ipsdb_update(
                 session,
                 project_id,
                 unique_ips,
-                map_existing_ipdbs
+                map_existing_ipdbs,
+                track_history
             )
         elif mode == ImportMode.APPEND:
             return await create_ipsdb_append(
                 session,
                 project_id,
                 unique_ips,
-                map_existing_ipdbs
+                map_existing_ipdbs,
+                track_history
             )
 
 
 # ================================
 # FILE UPLOAD
 # ================================
-async def import_ipsdb(project_name, report_file: Any, mode: ImportMode) -> List[IPDB] | None:
+async def import_ipsdb(
+        project_name, 
+        report_file: Any, 
+        mode: ImportMode, 
+        track_history: bool
+    ) -> List[IPDB] | None:
     """
     Import IPs from uploaded Nmap XML report into the database.
     """
@@ -543,12 +768,15 @@ async def import_ipsdb(project_name, report_file: Any, mode: ImportMode) -> List
     if not report_content:
         return None
 
-    ips_report = nmap_report_to_ipdict(report_content)
-    if not ips_report:
+    nmap_parser = NmapParser()
+    nmap_report = nmap_parser.parse_from_string(report_content)
+    new_ips = NmapToInternal.report_to_ipins(nmap_report)
+
+    if not new_ips:
         return None
     
-    new_ips = [IPIn(**new_ip) for new_ip in ips_report]
-    result = await create_ipsdb(project_name, new_ips, mode)
+#    new_ips = [IPIn(**new_ip) for new_ip in ips_report]
+    result = await create_ipsdb(project_name, new_ips, mode, track_history)
     return result
 
 
@@ -587,7 +815,8 @@ async def download_ipsdb_report(
 async def modify_ipdb(
     project_id: str,
     ip_address: str,
-    ip_data: BaseIPIn
+    ip_data: BaseIPIn,
+    track_history: bool
 ) -> IPDB | None:
     """
     Modifies a single IPDB record based on provided update data.
@@ -615,8 +844,14 @@ async def modify_ipdb(
         update_ipdb_attributes(ipdb, data)
 
         # --- Ports ---
+        history_entries: list[IPPortHistoryDB] = []
         if ports := data.get("ports"):
-            update_ipdb_ports(ipdb, ports)
+            update_ipdb_ports(
+                ipdb,
+                ports,
+                created_at=ip_data.endtime or unix_now(),
+                history_entries=history_entries if track_history else None
+            )
 
         # --- Hostnames ---
         if hostnames := set(data.get("hostnames") or []):
@@ -628,7 +863,12 @@ async def modify_ipdb(
             hostdbs = [hostname_map[name] for name in hostnames]
             update_ipdb_hostnames(ipdb, hostdbs)
 
-        await insert_and_refresh(ipdb)
+        session.add(ipdb)
+        if history_entries and track_history:
+            session.add_all(history_entries)
+
+        await session.commit()
+        await session.refresh(ipdb)
         return ipdb
 
 

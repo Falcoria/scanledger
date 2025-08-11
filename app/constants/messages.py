@@ -22,3 +22,5 @@ class Message(str, Enum):
     IPS_CANNOT_ADD = "Cannot add IPs"
     IPS_CANNOT_DOWNLOAD_REPORT = "Cannot download report"
     IP_NOT_FOUND = "IP not found"
+    NO_HISTORY = "No history found for this project"
+    NO_HISTORY_FOR_IP = "No history found for IP {ip}"

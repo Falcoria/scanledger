@@ -1,6 +1,6 @@
 from typing import List, Union
 from .models import PortDB
-from .schemas import PortIn, PortToDB
+from .schemas import PortIn
 
 from app.projects.ips.models import IPDB
 from app.projects.ips.schemas import IPIn

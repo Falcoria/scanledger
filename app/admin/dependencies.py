@@ -5,14 +5,13 @@ from typing import Annotated, Optional, Tuple
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import select
-from sqlalchemy.orm import joinedload
 
 from .utils import hash_password_without_salt
 from .schemas import UserPrivate
 from .service import userdb_by_token
 from .models import UserDB
 
-from app.database import get_session, select_one
+from app.database import select_one
 from app.projects.models import ProjectDB
 from app.logger import logger
 from app.constants.messages import Message
