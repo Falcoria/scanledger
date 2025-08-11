@@ -9,3 +9,4 @@ zipstream-ng==1.8.0
 alembic==1.15.2
 dict2xml==1.7.6
 python-libnmap==0.7.3
+git+https://github.com/Falcoria/falcoria-common.git@main
