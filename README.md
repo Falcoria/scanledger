@@ -6,7 +6,7 @@ ScanLedger is a structured scan result database used as part of the Falcoria dis
 
 - Supports import modes: insert, update, replace, append
 - API and CLI integration
-- Export support: XML, JSON, CSV (planned)
+- Export support: XML, JSON, CSV
 - Modular structure for projects, IPs, ports, and hostnames
 - Designed for distributed scanning and chaining phases
 
