@@ -355,8 +355,8 @@ def apply_replace_mode_ports(
                     setattr(existing_port, field, value)
 
             updated_ports.append(existing_port)
-        else:
-            updated_ports.append(existing_port)
+        #else:
+        #    updated_ports.append(existing_port)
 
     # Handle new open ports
     for key, port in incoming_map.items():
