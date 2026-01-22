@@ -24,10 +24,16 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
-    command: bash -c "alembic upgrade head"
+    command:
+      - /app/venv/bin/python
+      - -m
+      - alembic
+      - upgrade
+      - head
     depends_on:
       postgres:
         condition: service_healthy
+    restart: "no"
 
   scanledger:
     build:
