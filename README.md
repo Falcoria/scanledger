@@ -17,6 +17,28 @@ You can explore real-world examples here:
 - [Import Modes](https://falcoria.github.io/falcoria-docs/import-modes/)
 - [Use Cases](https://falcoria.github.io/falcoria-docs/use-cases/)
 
+## Quick Start
+
+For the fastest way to get ScanLedger running with Docker Compose, use the provided quickstart script:
+
+```bash
+./quickstart.sh
+```
+
+This script will:
+
+1. Generate self-signed TLS certificates
+2. Copy `.env.example` to `.env` and automatically configure:
+   - Random secure PostgreSQL password (16 characters)
+   - PostgreSQL host set to "postgres" for Docker networking
+   - Random secure admin token (16 characters)
+   - Random secure tasker token (16 characters)
+3. Start all services with `docker compose up -d`
+4. Perform a basic health check
+5. Display the generated admin token for API access
+
+The script handles all the setup automatically, so you can start using ScanLedger immediately without manual configuration.
+
 ## Usage
 
 ScanLedger is intended to be used together with the `falcli.py` CLI tool to initiate scans, import results, and manage scan data efficiently.
