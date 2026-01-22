@@ -134,9 +134,14 @@ Define the following variables in your `.env` file:
 POSTGRES_DB=scanledger
 POSTGRES_USER=scanledger_user
 POSTGRES_PASSWORD=supersecure
+ADMIN_TOKEN=your_secure_admin_token_here
+TASKER_TOKEN=your_secure_tasker_token_here
 ```
 
-These values will be used to configure the PostgreSQL service.
+These values will be used to configure the PostgreSQL service and API authentication:
+
+- **ADMIN_TOKEN**: Used for admin user initialization and authentication. This token is required for falcli tool operations and administrative API endpoints.
+- **TASKER_TOKEN**: Used for authentication with the "tasker" API component for automated scanning operations and task management.
 
 ### 3. Start services
 
