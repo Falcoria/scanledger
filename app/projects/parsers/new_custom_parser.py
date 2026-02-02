@@ -145,7 +145,7 @@ class NmapParser:
         scripts = []
         for script_el in port_el.findall("script"):
             elems = [
-                ScriptElem(key=e.attrib["key"], text=e.text or "")
+                ScriptElem(key=e.attrib.get("key"), text=e.text or "")
                 for e in script_el.findall("elem")
             ]
             scripts.append(Script(

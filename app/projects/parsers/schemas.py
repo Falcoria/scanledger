@@ -66,7 +66,7 @@ class PortStatus(BaseModel):
 
 
 class ScriptElem(BaseModel):
-    key: str
+    key: Optional[str] = None
     text: str
 
 
