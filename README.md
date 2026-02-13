@@ -1,221 +1,83 @@
 # ScanLedger
 
-ScanLedger is a structured scan result database used as part of the Falcoria distributed scanning system. It stores information about discovered IPs, ports, services, and banners from Nmap and other tools. The database supports controlled import and merging of scan data using flexible import modes.
+ScanLedger is the shared state database in the [Falcoria](https://github.com/Falcoria/falcoria) distributed scanning system. Every scan result — whether from a Falcoria worker or an imported Nmap report — gets merged into ScanLedger according to the chosen import mode.
 
-## Features
+Data is organized by project. Each project maintains unique records per IP, port, and hostname. When new data comes in, it doesn't overwrite the previous state blindly — the import mode (insert, append, update, replace) controls what happens to existing records.
 
-- Supports import modes: insert, update, replace, append
-- API and CLI integration
-- Export support: XML, JSON, CSV
-- Modular structure for projects, IPs, ports, and hostnames
-- Designed for distributed scanning and chaining phases
+ScanLedger also tracks change history: if a port state, service, or banner changes between scans, the transition is recorded.
 
-The power of ScanLedger comes from its flexible import modes, which allow you to control how scan data is merged, updated, or replaced.
+## Quick start
 
-You can explore real-world examples here:
-
-- [Import Modes](https://falcoria.github.io/falcoria-docs/import-modes/)
-- [Use Cases](https://falcoria.github.io/falcoria-docs/use-cases/)
-
-## Quick Start
-
-For the fastest way to get ScanLedger running with Docker Compose, use the provided quickstart script:
+The fastest way to run everything (ScanLedger + Tasker + Worker + Postgres + Redis + RabbitMQ):
 
 ```bash
+git clone https://github.com/Falcoria/falcoria.git
+cd falcoria
 ./quickstart.sh
 ```
 
-This script will:
+See the [all-in-one repo](https://github.com/Falcoria/falcoria) for details.
 
-1. Generate self-signed TLS certificates
-2. Copy `.env.example` to `.env` and automatically configure:
-   - Random secure PostgreSQL password (16 characters)
-   - PostgreSQL host set to "postgres" for Docker networking
-   - Random secure admin token (16 characters)
-   - Random secure tasker token (16 characters)
-3. Start all services with `docker compose up -d`
-4. Perform a basic health check
-5. Display the generated admin token for API access
+## Standalone setup
 
-The script handles all the setup automatically, so you can start using ScanLedger immediately without manual configuration.
-
-## Usage
-
-ScanLedger is intended to be used together with the `falcli.py` CLI tool to initiate scans, import results, and manage scan data efficiently.
-
-## Installation
-
-### 1. Virtual Environment (for development)
-
-Ensure PostgreSQL is running and accessible.
+If you're deploying ScanLedger separately (distributed setup or data aggregation only):
 
 ```bash
-# Clone repository
 git clone https://github.com/Falcoria/scanledger.git
 cd scanledger
+./quickstart.sh
+```
 
-# Create and activate virtual environment
+The script generates TLS certificates, creates `.env` from the example, sets random credentials, starts services with Docker Compose, and prints the admin token.
+
+ScanLedger runs on port `443` (HTTPS). API docs are available at `/docs`.
+
+### Manual setup (development)
+
+```bash
 python3 -m venv venv
 source venv/bin/activate
-
-# Install dependencies
-pip install --upgrade pip
 pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-nano .env  # Edit database and tokens
-
-# Run app
+cp .env.example .env  # edit database and token settings
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-API is available at `https://localhost:8000`, with docs at `/docs`.
+Requires a running PostgreSQL instance.
 
----
+## Configuration
 
-### 2. Docker (with TLS)
+Environment variables in `.env`:
 
-Before running the container, generate self-signed TLS certificates:
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST` — database connection
+- `ADMIN_TOKEN` — token for falcli and admin API endpoints
+- `TASKER_TOKEN` — token for Tasker integration
 
-```bash
-./generate-tls-bundle.sh
-```
+## Usage
 
-Then run the Docker container:
-
-```bash
-docker run -d \
-  --name scanledger \
-  -p 443:443 \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=changeme \
-  -e POSTGRES_DB=falcoriadb \
-  -e POSTGRES_HOST=localhost \
-  -e ENVIRONMENT=development \
-  -e ADMIN_TOKEN=changeme \
-  -e TASKER_TOKEN=changeme \
-  -v $(pwd)/unit/bundle.pem:/docker-entrypoint.d/bundle.pem:ro \
-  ghcr.io/falcoria/scanledger:latest
-```
-
-Ensure PostgreSQL is running and accessible from within the container.
-
----
-
-### 3. Docker (build locally)
-
-To build the Docker image locally from the Dockerfile:
+ScanLedger is accessed through [falcli](https://github.com/Falcoria/falcli) or the REST API directly. Common operations:
 
 ```bash
-# Clone repository
-git clone https://github.com/yourname/scanledger.git
-cd scanledger
+# Import a report
+falcli project ips import -f report.xml --mode append
 
-# Generate self-signed TLS certificates
-./generate-tls-bundle.sh
+# View current state
+falcli project ips get
 
-# Build the Docker image
-docker build -t scanledger .
+# View change history
+falcli project ips history
 
-# Run the container with environment variables and mounted TLS bundle
-docker run -d \
-  --name scanledger \
-  -p 443:443 \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=changeme \
-  -e POSTGRES_DB=falcoriadb \
-  -e POSTGRES_HOST=localhost \
-  -e ENVIRONMENT=development \
-  -e ADMIN_TOKEN=changeme \
-  -e TASKER_TOKEN=changeme \
-  -v $(pwd)/unit/bundle.pem:/docker-entrypoint.d/bundle.pem:ro \
-  scanledger
+# Export as Nmap XML
+falcli project ips download
 ```
 
-This allows you to test or develop locally without pulling from GitHub Container Registry.
+## Documentation
 
----
+Full documentation: [https://falcoria.github.io/falcoria-docs/](https://falcoria.github.io/falcoria-docs/)
 
-## Running ScanLedger with Docker Compose
-
-To run ScanLedger with a built-in PostgreSQL database using Docker Compose, follow these steps:
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/your-org/scanledger.git
-cd scanledger
-```
-
-### 2. Create a `.env` file
-
-Define the following variables in your `.env` file:
-
-```env
-POSTGRES_DB=scanledger
-POSTGRES_USER=scanledger_user
-POSTGRES_PASSWORD=supersecure
-ADMIN_TOKEN=your_secure_admin_token_here
-TASKER_TOKEN=your_secure_tasker_token_here
-```
-
-These values will be used to configure the PostgreSQL service and API authentication:
-
-- **ADMIN_TOKEN**: Used for admin user initialization and authentication. This token is required for falcli tool operations and administrative API endpoints.
-- **TASKER_TOKEN**: Used for authentication with the "tasker" API component for automated scanning operations and task management.
-
-### 3. Start services
-
-Use Docker Compose to build and start all services:
-
-```bash
-docker compose up --build
-```
-
-This command launches:
-- `scanledger` service, served on port 443
-- `postgres` service, using a persistent volume
-
-### 4. Access the application
-
-After the services start successfully, access ScanLedger via HTTPS on:
-
-```
-https://localhost:443
-```
-
-Make sure you have valid certificates in place (such as `bundle.pem`) as configured in your Compose setup.
-
----
-
-## Example API Request
-
-Once ScanLedger is running, you can use a tool like `curl` to interact with the API. For example, to import a scan file:
-
-```bash
-curl -X POST https://localhost:443/projects \
-  -H "Authorization: Bearer <YOUR_ADMIN_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"project_name": "example-project", "comment": "Initial test project"}' \
-  --insecure
-```
-
-Alternatively, you can use the falcli command-line tool for more convenient access:
-[falcli command-line tool](https://github.com/Falcoria/falcli)
-
-```bash
-python3 falcli.py project create example-project
-```
-
-You can browse available endpoints and parameters at:
-
-```
-https://localhost:443/docs
-```
-
----
+- [Architecture](https://falcoria.github.io/falcoria-docs/architecture/) — how ScanLedger fits into the system
+- [Import Modes](https://falcoria.github.io/falcoria-docs/concepts/import-modes/) — how scan data is merged
+- [Change History](https://falcoria.github.io/falcoria-docs/concepts/change-history/) — what gets tracked between scans
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE.md](LICENSE.md) file for details.
+MIT. See [LICENSE.md](LICENSE.md).
