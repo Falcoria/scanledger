@@ -535,7 +535,7 @@ async def create_ipsdb_replace(
                 existing_ipdb=existing_ipdb,
                 history_entries=history_entries
             )
-            existing_ipdb.hostnames = list(ip.hostnames or [])
+            update_ipdb_hostnames(existing_ipdb, ip.hostnames or [])
             session.add(existing_ipdb)
             newly_added_ips.append(existing_ipdb.ip)
         else:
