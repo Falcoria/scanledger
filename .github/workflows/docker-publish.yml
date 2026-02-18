@@ -2,7 +2,13 @@ name: Build and Push Docker image
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    paths:
+      - "app/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - "migrations/**"
+      - "alembic.ini"
 
 jobs:
   build-and-push:
@@ -25,7 +31,7 @@ jobs:
 
       - name: Set lowercase image name
         id: prep
-        run: echo "::set-output name=image::ghcr.io/${GITHUB_REPOSITORY,,}:latest"
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> $GITHUB_OUTPUT
 
       - name: Build Docker image
         run: docker build -t ${{ steps.prep.outputs.image }} .
