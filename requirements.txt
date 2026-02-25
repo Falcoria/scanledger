@@ -1,5 +1,5 @@
 uvicorn[standard]
-pydantic-settings==2.6.0
+pydantic-settings==2.13.1
 sqlmodel==0.0.24
 asyncpg==0.30.0
 fastapi==0.115.12
