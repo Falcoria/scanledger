@@ -12,7 +12,7 @@ from fastapi import (
 from fastapi.responses import Response
 
 from app.constants.messages import Message
-from app.projects.ips.schemas import IPIn, IPOut, BaseIPIn
+from app.projects.ips.schemas import IPIn, IPOut, BaseIPIn, IPFilterParams, IPDeleteRequest
 from app.projects.dependencies import file_upload
 
 from falcoria_common.schemas.enums.common import ImportMode
@@ -20,13 +20,12 @@ from falcoria_common.schemas.enums.common import ImportMode
 from .service import (
     get_ipsdb,
     delete_ipsdb,
+    delete_ipsdb_by_addresses,
     create_ipsdb,
     import_ipsdb,
     download_ipsdb_report,
     get_ipdb,
-    delete_ipdb,
-    modify_ipdb,
-    download_ipsdb_report_custom_xml
+    modify_ipdb
 )
 from .schemas import DownloadReportFormat
 
@@ -42,6 +41,7 @@ ips_router = APIRouter()
 )
 async def get_ips(
     project_id: str,
+    filters: Annotated[IPFilterParams, Depends()] = None,
     skip: Annotated[int | None, Query(ge=0)] = None,
     limit: Annotated[int | None, Query(ge=0)] = None,
     has_ports: Annotated[bool, Query()] = True,
@@ -49,7 +49,7 @@ async def get_ips(
     """
     Get all IPs for project and associated data: ports, port checks
     """
-    ips = await get_ipsdb(project_id, skip, limit, has_ports)
+    ips = await get_ipsdb(project_id, skip, limit, has_ports, filters)
     return ips if ips else []
 
 
@@ -126,6 +126,7 @@ async def import_ips(
 )
 async def download_ips(
     project_id: str,
+    filters: Annotated[IPFilterParams, Depends()] = None,
     skip: Annotated[int | None, Query(ge=0)] = None,
     limit: Annotated[int | None, Query(ge=0)] = None,
     has_ports: Annotated[bool, Query()] = True,
@@ -134,7 +135,7 @@ async def download_ips(
     """
     Download all IPs for project and associated data: ports, port checks
     """
-    report = await download_ipsdb_report(project_id, skip, limit, has_ports, format)
+    report = await download_ipsdb_report(project_id, skip, limit, has_ports, format, filters)
     if report is None:
         raise HTTPException(
             status_code=400, 
@@ -149,39 +150,6 @@ async def download_ips(
     #    return Response(content=report, media_type="application/json")
 
 
-@ips_router.get(
-    "/download1",
-    summary="Download IPs (custom XML)",
-    tags=["projects:ips"],
-)
-async def download_ips_custom_xml(
-    project_id: str,
-    skip: Annotated[int | None, Query(ge=0)] = None,
-    limit: Annotated[int | None, Query(ge=0)] = None,
-    has_ports: Annotated[bool, Query()] = True,
-    format: str = "xml"
-):
-    """
-    Download all IPs for project and associated data: ports, port checks, using custom Nmap XML exporter
-    """
-    from app.projects.parsers.internal_to_nmap import InternalToNmapXML
-    from app.projects.ips.schemas import IPOutNmap
-    ips = await get_ipsdb(project_id, skip, limit, has_ports)
-    nmap_report = InternalToNmapXML.build_nmap_report(ips)
-    if format == "xml":
-        xml_str = InternalToNmapXML.to_xml(nmap_report)
-        if not xml_str:
-            raise HTTPException(
-                status_code=400, 
-                detail=Message.IPS_CANNOT_DOWNLOAD_REPORT
-            )
-        return Response(content=xml_str, media_type="application/xml")
-    elif format == "json":
-        import json
-        json_report = nmap_report.model_dump(exclude_none=True)
-        return Response(content=json.dumps(json_report), media_type="application/json")
-    else:
-        raise HTTPException(status_code=400, detail="Invalid format. Use 'xml' or 'json'.")
 
 
 @ips_router.get(
@@ -206,26 +174,26 @@ async def get_ip(
     return ip
 
 
-@ips_router.delete(
-    "/{ip_address}",
-    summary="Delete IP",
+@ips_router.post(
+    "/delete",
+    summary="Delete IPs",
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["projects:ips"],
 )
-async def delete_ip(
+async def delete_ips_by_addresses(
     project_id: str,
-    ip_address: str,
+    body: Annotated[IPDeleteRequest, Body()],
 ):
     """
-    Delete IP by address for project with associated data: ports, port checks
+    Delete IPs by list of addresses for project with associated data: ports, port checks
     """
-    result = await delete_ipdb(project_id, ip_address)
+    result = await delete_ipsdb_by_addresses(project_id, body.ip_addresses)
     if result is None:
         raise HTTPException(
-            status_code=404, 
-            detail=Message.IP_NOT_FOUND
+            status_code=404,
+            detail=Message.IPS_CANNOT_DELETE
         )
-    
+
 
 @ips_router.put(
     "/{ip_address}",

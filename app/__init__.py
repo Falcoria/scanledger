@@ -26,7 +26,8 @@ async def lifespan(app: FastAPI):
 
 def create_app():
     app = FastAPI(
-        docs_url=config.docs_url, 
+        title="Falcoria ScanLedger",
+        docs_url=config.docs_url,
         redoc_url=config.redoc_url,
         lifespan=lifespan,
         openapi_tags=[

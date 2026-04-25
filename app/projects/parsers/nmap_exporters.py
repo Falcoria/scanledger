@@ -59,10 +59,12 @@ def add_host(nmaprun_elem, ip: IPDB):
     address.set("addrtype", "ipv4")
 
     hostnames = ET.SubElement(host, "hostnames")
-    for hostname in host_data.get("hostnames", []):
-        hn = ET.SubElement(hostnames, "hostname")
-        hn.set("name", hostname)
-        hn.set("type", "user")
+    # Access hostnames directly from the IPDB object, not from model_dump()
+    for hostname_obj in ip.hostnames or []:
+        if hostname_obj and hostname_obj.hostname:
+            hn = ET.SubElement(hostnames, "hostname")
+            hn.set("name", hostname_obj.hostname)
+            hn.set("type", "user")
 
     os_fingerprint = host_data.get("os")
     if os_fingerprint:

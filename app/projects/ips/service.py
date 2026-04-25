@@ -1,27 +1,9 @@
-from app.projects.parsers.internal_to_nmap import InternalToNmapXML
-# ================================
-# DOWNLOAD REPORT (custom XML)
-# ================================
 
-async def download_ipsdb_report_custom_xml(
-    project_id: str,
-    skip: int | None = None,
-    limit: int | None = None,
-    has_ports: bool | None = None
-) -> str | None:
-    """
-    Downloads IPs from the database for the specified project and returns custom Nmap XML report as a file.
-    """
-    ips = await get_ipsdb(project_id, skip, limit, has_ports)
-    if not ips:
-        return None
-    nmap_report = InternalToNmapXML.build_nmap_report(ips)
-    xml_str = InternalToNmapXML.to_xml(nmap_report)
-    return xml_str
 from typing import List, Dict, Any, Optional
 
 from sqlmodel import select, delete
-from sqlalchemy.orm import joinedload
+from sqlalchemy import and_
+from sqlalchemy.orm import joinedload, selectinload
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.database import select_many, delete_and_commit, get_session, select_one
@@ -41,7 +23,8 @@ from falcoria_common.schemas.enums.port import ProtocolEnum, PortState
 from falcoria_common.schemas.enums.common import ImportMode
 
 from .models import IPDB
-from .schemas import IPIn, DownloadReportFormat, BaseIPIn
+from .schemas import IPIn, DownloadReportFormat, BaseIPIn, IPFilterParams
+from .filters import apply_filters, build_port_conditions
 
 
 # ================================
@@ -52,24 +35,33 @@ async def get_ipsdb(
     project_id: str,
     skip: int | None,
     limit: int | None,
-    has_ports: bool | None = None
+    has_ports: bool | None = None,
+    filters: IPFilterParams | None = None,
 ) -> List[IPDB]:
     """
     Retrieves all IPs from the database for the specified project.
     """
+    port_conditions = build_port_conditions(filters) if filters else []
+    ports_mode = filters.ports_mode if filters else None
+
+    ports_loader = (
+        selectinload(IPDB.ports.and_(*port_conditions))  # type: ignore[union-attr]
+        if ports_mode and ports_mode.value == "matched" and port_conditions
+        else selectinload(IPDB.ports)
+    )
+
     statement = (
         select(IPDB)
         .where(IPDB.project_id == project_id)
         .order_by(IPDB.ip)
-        .options(
-            joinedload(IPDB.ports),
-            joinedload(IPDB.hostnames)
-        )
+        .options(ports_loader, joinedload(IPDB.hostnames))
         .offset(skip)
         .limit(limit)
     )
     if has_ports:
-        statement = statement.where(IPDB.ports.any())
+        statement = statement.where(IPDB.ports.any())  # type: ignore[union-attr]
+    if filters:
+        statement = apply_filters(statement, filters)
 
     return await select_many(statement)
 
@@ -789,12 +781,13 @@ async def download_ipsdb_report(
     skip: int | None = None,
     limit: int | None = None,
     has_ports: bool | None = None,
-    format: DownloadReportFormat = DownloadReportFormat.XML
+    format: DownloadReportFormat = DownloadReportFormat.XML,
+    filters: IPFilterParams | None = None,
 ) -> str | None:
     """
     Downloads IPs from the database for the specified project and returns report as a file.
     """
-    ips = await get_ipsdb(project_id, skip, limit, has_ports)
+    ips = await get_ipsdb(project_id, skip, limit, has_ports, filters)
 
     if not ips:
         return None
@@ -893,19 +886,14 @@ async def get_ipdb(
     return await select_one(statement)
 
 
-async def delete_ipdb(
+async def delete_ipsdb_by_addresses(
     project_id: str,
-    ip_address: str
+    ip_addresses: list[str]
 ) -> bool | None:
-    """
-    Deletes a single IPDB record based on project ID and IP address.
-    """
-    statement = (
-        delete(IPDB)
-        .where(
-            IPDB.project_id == project_id,
-            IPDB.ip == ip_address
-        )
+    """Deletes IPDB records for the given list of IP addresses."""
+    statement = delete(IPDB).where(
+        IPDB.project_id == project_id,
+        IPDB.ip.in_(ip_addresses)
     )
     return await delete_and_commit(statement)
 

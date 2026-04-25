@@ -5,6 +5,9 @@ from sqlmodel import select, delete
 from app.projects.ports.schemas import PortIn
 from app.projects.ports.models import PortDB
 from app.projects.history.models import IPPortHistoryDB
+from app.projects.filters import OrderDir
+from app.projects.history.schemas import HistoryFilterParams, HistoryPaginationParams
+from app.projects.history.filters import apply_history_filters
 from falcoria_common.schemas.enums.history import PortChangeType
 from app.database import select_many, delete_and_commit
 
@@ -51,28 +54,25 @@ def detect_port_change_entry(
     )
 
 
-async def get_ip_port_historiesdb(project_id: str) -> list[IPPortHistoryDB]:
-    """
-    Retrieves the port history for a given project.
-    Returns a list of IPPortHistory entries.
-    """
-    statement = select(IPPortHistoryDB).where(
-        IPPortHistoryDB.project_id == project_id
-    )
-
+async def get_ip_port_historiesdb(
+    project_id: str,
+    filters: HistoryFilterParams | None = None,
+    pagination: HistoryPaginationParams | None = None,
+) -> list[IPPortHistoryDB]:
+    """Retrieves port history for a project with optional filtering and pagination."""
+    statement = select(IPPortHistoryDB).where(IPPortHistoryDB.project_id == project_id)
+    if filters:
+        statement = apply_history_filters(statement, filters)
+    if pagination:
+        col = getattr(IPPortHistoryDB, pagination.order_by)
+        order = col.asc() if pagination.order_dir == OrderDir.ASC else col.desc()
+        statement = statement.order_by(order, IPPortHistoryDB.id.desc()).offset(pagination.skip).limit(pagination.limit)
+    else:
+        statement = statement.order_by(IPPortHistoryDB.created_at.desc(), IPPortHistoryDB.id.desc())
     results = await select_many(statement)
     return [IPPortHistoryDB.model_validate(item) for item in results] if results else []
 
 
-async def get_ip_port_historydb(project_id: str, ip: str) -> list[IPPortHistoryDB]:
-    statement = select(IPPortHistoryDB).where(
-        IPPortHistoryDB.project_id == project_id,
-        IPPortHistoryDB.ip == ip
-    )
-
-    results = await select_many(statement)
-    return [IPPortHistoryDB.model_validate(item) for item in results] if results else []
-    
 
 async def delete_ip_port_historydb(project_id: str) -> bool | None:
     statement = delete(IPPortHistoryDB).where(
